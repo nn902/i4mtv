@@ -44,7 +44,7 @@ admin_broadcast_state = {}
 # ==============================================================================
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://postgres:chikamalika2382@db.jvrpptcptdkfmbvsvjgp.supabase.co:5432/postgres"
+    "postgresql://bothost_db_a8082ad66c45:3lEv7RUeVM2gC05wtPlhRReeYyrPQZ4esCv7FKfNq1w@node1.pghost.ru:16251/bothost_db_a8082ad66c45"
 )
 
 def get_conn():

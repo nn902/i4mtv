@@ -1,0 +1,2 @@
+pyTelegramBotAPI
+pg8000

@@ -58,7 +58,7 @@ def get_conn():
         user=db_info.username or "postgres",
         password=unquote(db_info.password) if db_info.password else None,
         host=db_info.hostname,
-        port=db_info.port or 5432,
+        port=db_info.port or 6543,
         database=db_info.path[1:] if db_info.path else "postgres",
         ssl_context=ctx
     )

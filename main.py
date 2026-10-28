@@ -1295,63 +1295,60 @@ def handle_all_text(message):
     name = message.from_user.first_name if message.from_user.first_name else "Пользователь"
     username = f"@{message.from_user.username}" if message.from_user.username else "Не установлен"
 
-# Проверка: если пользователь отвечает (Reply) на сообщение бота с отзывом и у него есть юзернейм
-if message.reply_to_message and message.from_user.username:
-    replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-    # Проверяем, что это сообщение об успешном заказе
-    if "успешно выполнен!" in replied_text:
-        # Извлекаем номер заказа из текста
-        order_num_match = re.search(r"Заказ #(\d+)", replied_text)
-        ord_num = order_num_match.group(1) if order_num_match else "0"
+    # --- 1. ОБРАБОТКА ОТЗЫВОВ (ОТВЕТОМ НА СООБЩЕНИЕ) ---
+    if message.reply_to_message and message.from_user.username:
+        replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+        # Проверяем, что это сообщение об успешном заказе
+        if "успешно выполнен!" in replied_text:
+            # Извлекаем номер заказа из текста
+            order_num_match = re.search(r"Заказ #(\d+)", replied_text)
+            ord_num = order_num_match.group(1) if order_num_match else "0"
 
-        # Ищем сумму GMP и рублей из БД по этому order_id
-        try:
-            conn = get_conn()
-            cursor = conn.cursor()
-            cursor.execute("SELECT gmp_amount, rub_amount FROM orders WHERE order_id = %s;", (int(ord_num),))
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            
-            gmp_val = row[0] if row else 0
-            rub_val = int(row[1]) if row else 0
-        except Exception:
-            gmp_val = 0
-            rub_val = 0
-
-        buyer_username = f"@{message.from_user.username}"
-        review_text = message.text
-        
-        # ИСПРАВЛЕННЫЕ ОТСТУПЫ ЗДЕСЬ:
-        review_id = create_review(
-            int(ord_num),
-            user_id,
-            rub_val,
-            gmp_val
-        )
-
-        if review_id is None:
-            review_id = 171
-
-        # Формируем отчет для админов
-        # Заменил несуществующие EMOJI_..._PREMIUM на обычные из твоего кода.
-        # Если нужен html.escape, добавь в самый верх файла: import html
-        admin_review_msg = (
-            f"<b>Отзыв #{review_id}</b>\n"
-            f"Продано — {gmp_val} {EMOJI_DIAMOND}\n"
-            f"За {rub_val} {EMOJI_MONEY}\n\n"
-            f"<b>Комментарий от покупателя — {buyer_username}:</b>\n\n"
-            f"{review_text}"
-        )
-
-        for admin in ADMIN_IDS:
+            # Ищем сумму GMP и рублей из БД по этому order_id
+            gmp_val, rub_val = 0, 0
             try:
-                bot.send_message(admin, admin_review_msg, parse_mode="HTML")
+                conn = get_conn()
+                cursor = conn.cursor()
+                cursor.execute("SELECT gmp_amount, rub_amount FROM orders WHERE order_id = %s;", (int(ord_num),))
+                row = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                
+                if row:
+                    gmp_val = row[0]
+                    rub_val = int(row[1])
             except Exception as e:
-                logger.error(f"Не удалось переслать отзыв админу {admin}: {e}")
+                logger.error(f"Ошибка получения данных заказа для отзыва: {e}")
 
-    
-    # Проверка на реферальный переход: /start ref_12345678
+            buyer_username = f"@{message.from_user.username}"
+            review_text = message.text
+            
+            review_id = create_review(
+                int(ord_num),
+                user_id,
+                rub_val,
+                gmp_val
+            )
+
+            if review_id is None:
+                review_id = 171
+
+            # Формируем отчет для админов (Отступы выровнены идеально)
+            admin_review_msg = (
+                f"<b>Отзыв #{review_id}</b>\n"
+                f"Продано — {gmp_val} {EMOJI_DIAMOND}\n"
+                f"За {rub_val} {EMOJI_MONEY}\n\n"
+                f"<b>Комментарий от покупателя — {buyer_username}:</b>\n\n"
+                f"{review_text}"
+            )
+
+            for admin in ADMIN_IDS:
+                try:
+                    bot.send_message(admin, admin_review_msg, parse_mode="HTML")
+                except Exception as e:
+                    logger.error(f"Не удалось переслать отзыв админу {admin}: {e}")
+
+    # --- 2. РЕФЕРАЛЬНЫЕ ССЫЛКИ ---
     referrer_id = None
     if message.text and message.text.startswith('/start'):
         parts = message.text.split()
@@ -1363,7 +1360,6 @@ if message.reply_to_message and message.from_user.username:
 
     is_new_user, ref_extended = upsert_user(user_id, name, username, referrer_id)
 
-    # Если рефереру был продлен бонус — отправляем ему уведомление
     if ref_extended and referrer_id:
         try:
             bot.send_message(
@@ -1375,7 +1371,7 @@ if message.reply_to_message and message.from_user.username:
         except Exception:
             pass
 
-    # Шаги рассылки для админа
+    # --- 3. РАССЫЛКА ДЛЯ АДМИНА ---
     if user_id in ADMIN_IDS and user_id in admin_broadcast_state:
         state = admin_broadcast_state[user_id]
         step = state.get("step")
@@ -1401,6 +1397,7 @@ if message.reply_to_message and message.from_user.username:
             bot.send_message(message.chat.id, f"Готово к отправке!\n👥 Получателей: <b>{total_users}</b>\n\nНачать рассылку?", reply_markup=broadcast_confirm_keyboard(), parse_mode="HTML")
             return
 
+    # --- 4. СТАРТ И ПРИВЕТСТВИЕ ---
     if message.text and message.text.startswith('/start'):
         user_states[user_id] = None
         bonuses = get_user_bonuses(user_id)
@@ -1416,6 +1413,7 @@ if message.reply_to_message and message.from_user.username:
         )
         return
 
+    # --- 5. ВВОД СУММЫ ДЛЯ ПОКУПКИ GMP ---
     state = user_states.get(user_id)
     
     if state == "awaiting_rubles" or is_probable_amount(message.text):
@@ -1450,7 +1448,6 @@ if message.reply_to_message and message.from_user.username:
         bonus_user_notes = []
         admin_lines = []
 
-        # 1. Приветственный бонус / бонус по рефке +5%
         if bonuses["welcome_5"]:
             bonus_percent += 5
             ref_tag = "перешел по реф. ссылке" if bonuses["has_referrer"] else "приветственный бонус"
@@ -1458,7 +1455,6 @@ if message.reply_to_message and message.from_user.username:
             admin_lines.append(f"🎁 <b>Скидка/бонус:</b> {ref_tag} (+5% к выдаче GMP)")
             admin_lines.append(f"⏳ <b>Успел оформить за 24ч:</b> да (оставалось <code>{bonuses['welcome_time_str']}</code>)")
 
-        # 2. Реферальный бонус +2% (если пригласил кого-то)
         if bonuses["ref_2"]:
             bonus_percent += 2
             bonus_user_notes.append("+2% (за приглашение друзей)")
@@ -1486,7 +1482,6 @@ if message.reply_to_message and message.from_user.username:
             "is_photo": True
         }
 
-        # Блок бонуса для пользователя при оформлении
         bonus_calc_line = ""
         if bonus_percent > 0:
             time_left_str = bonuses['welcome_time_str'] if bonuses['welcome_5'] else bonuses['ref_time_str']
@@ -1530,7 +1525,7 @@ if message.reply_to_message and message.from_user.username:
         markup.add(btn_cancel)
 
         bot.send_message(message.chat.id, requisites_text, reply_markup=markup, parse_mode="HTML")
-
+ 
 
 # === ЗАПУСК БОТА ===
 if __name__ == "__main__":

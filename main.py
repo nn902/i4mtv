@@ -1176,5 +1176,3 @@ if __name__ == "__main__":
         except Exception:
             logger.exception("Сбой polling, переподключение через 5 секунд")
             time.sleep(5)
-
-</unlimai_attachment_text>

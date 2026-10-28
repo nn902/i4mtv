@@ -1261,6 +1261,30 @@ def handle_media(message):
             parse_mode="HTML"
         )
 
+def create_review(order_id, user_id, rub_amount, gmp_amount):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO reviews (order_id, user_id, rub_amount, gmp_amount)
+            VALUES (%s, %s, %s, %s)
+            RETURNING review_id
+        """, (order_id, user_id, rub_amount, gmp_amount))
+
+        review_id = cursor.fetchone()[0]
+        conn.commit()
+        return review_id
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Ошибка создания отзыва: {e}")
+        return None
+
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # === ЕДИНЫЙ ПЕРЕХВАТЧИК СООБЩЕНИЙ ===
 
@@ -1296,10 +1320,19 @@ def handle_all_text(message):
 
             buyer_username = f"@{message.from_user.username}"
             review_text = message.text
+            review_id = create_review(
+    int(ord_num),
+    user_id,
+    rub_val,
+    gmp_val
+)
+
+if review_id is None:
+    review_id = 171
 
             # Формируем отчет для админов в моноширинном шрифте (<code>...</code>)
             admin_review_msg = (
-                f"<code>Отзыв #{ord_num}\n"
+                f"<code>Отзыв #{review_id}\n"
                 f"Продано - {gmp_val}💎\n"
                 f"За {rub_val}💸\n"
                 f"{buyer_username}:\n\n"

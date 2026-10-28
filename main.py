@@ -1334,8 +1334,8 @@ if review_id is None:
             # Формируем отчет для админов в моноширинном шрифте (<code>...</code>)
                 admin_review_msg = (
                     f"<b>Отзыв #{review_id}</b>\n"
-                    f"Продано — {gmp_val} {EMOJI_DIAMOND_PREMIUM}\n"
-                    f"За {rub_val} {EMOJI_MONEY_PREMIUM}\n\n"
+                    f"Продано — {gmp_val} {EMOJI_DIAMOND}\n"
+                    f"За {rub_val} {EMOJI_MONEY}\n\n"
                     f"<b>Комментарий от покупателя — {buyer_username}:</b>\n\n"
                     f"{html.escape(review_text)}"
                 )

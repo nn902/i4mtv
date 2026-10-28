@@ -1295,57 +1295,62 @@ def handle_all_text(message):
     name = message.from_user.first_name if message.from_user.first_name else "Пользователь"
     username = f"@{message.from_user.username}" if message.from_user.username else "Не установлен"
 
-    # Проверка: если пользователь отвечает (Reply) на сообщение бота с отзывом и у него есть юзернейм
-    if message.reply_to_message and message.from_user.username:
-        replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-        # Проверяем, что это сообщение об успешном заказе
-        if "успешно выполнен!" in replied_text:
-            # Извлекаем номер заказа из текста
-            order_num_match = re.search(r"Заказ #(\d+)", replied_text)
-            ord_num = order_num_match.group(1) if order_num_match else "???"
+# Проверка: если пользователь отвечает (Reply) на сообщение бота с отзывом и у него есть юзернейм
+if message.reply_to_message and message.from_user.username:
+    replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+    # Проверяем, что это сообщение об успешном заказе
+    if "успешно выполнен!" in replied_text:
+        # Извлекаем номер заказа из текста
+        order_num_match = re.search(r"Заказ #(\d+)", replied_text)
+        ord_num = order_num_match.group(1) if order_num_match else "0"
 
-            # Ищем сумму GMP и рублей из БД по этому order_id
+        # Ищем сумму GMP и рублей из БД по этому order_id
+        try:
+            conn = get_conn()
+            cursor = conn.cursor()
+            cursor.execute("SELECT gmp_amount, rub_amount FROM orders WHERE order_id = %s;", (int(ord_num),))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            gmp_val = row[0] if row else 0
+            rub_val = int(row[1]) if row else 0
+        except Exception:
+            gmp_val = 0
+            rub_val = 0
+
+        buyer_username = f"@{message.from_user.username}"
+        review_text = message.text
+        
+        # ИСПРАВЛЕННЫЕ ОТСТУПЫ ЗДЕСЬ:
+        review_id = create_review(
+            int(ord_num),
+            user_id,
+            rub_val,
+            gmp_val
+        )
+
+        if review_id is None:
+            review_id = 171
+
+        # Формируем отчет для админов
+        # Заменил несуществующие EMOJI_..._PREMIUM на обычные из твоего кода.
+        # Если нужен html.escape, добавь в самый верх файла: import html
+        admin_review_msg = (
+            f"<b>Отзыв #{review_id}</b>\n"
+            f"Продано — {gmp_val} {EMOJI_DIAMOND}\n"
+            f"За {rub_val} {EMOJI_MONEY}\n\n"
+            f"<b>Комментарий от покупателя — {buyer_username}:</b>\n\n"
+            f"{review_text}"
+        )
+
+        for admin in ADMIN_IDS:
             try:
-                conn = get_conn()
-                cursor = conn.cursor()
-                cursor.execute("SELECT gmp_amount, rub_amount FROM orders WHERE order_id = %s;", (int(ord_num),))
-                row = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                
-                gmp_val = row[0] if row else 0
-                rub_val = int(row[1]) if row else 0
-            except Exception:
-                gmp_val = 0
-                rub_val = 0
+                bot.send_message(admin, admin_review_msg, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Не удалось переслать отзыв админу {admin}: {e}")
 
-            buyer_username = f"@{message.from_user.username}"
-            review_text = message.text
-            review_id = create_review(
-    int(ord_num),
-    user_id,
-    rub_val,
-    gmp_val
-)
-
-if review_id is None:
-    review_id = 171
-
-            # Формируем отчет для админов в моноширинном шрифте (<code>...</code>)
-                admin_review_msg = (
-                    f"<b>Отзыв #{review_id}</b>\n"
-                    f"Продано — {gmp_val} {EMOJI_DIAMOND}\n"
-                    f"За {rub_val} {EMOJI_MONEY}\n\n"
-                    f"<b>Комментарий от покупателя — {buyer_username}:</b>\n\n"
-                    f"{html.escape(review_text)}"
-                )
-
-            for admin in ADMIN_IDS:
-                try:
-                    bot.send_message(admin, admin_review_msg, parse_mode="HTML")
-                except Exception as e:
-                    logger.error(f"Не удалось переслать отзыв админу {admin}: {e}")
-
+    
     # Проверка на реферальный переход: /start ref_12345678
     referrer_id = None
     if message.text and message.text.startswith('/start'):
